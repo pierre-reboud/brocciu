@@ -1,0 +1,4 @@
+{
+    "user" : "<lichess_bot_username>",
+    "token": "<lichess_api_token>"
+}

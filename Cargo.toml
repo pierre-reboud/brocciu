@@ -1,0 +1,25 @@
+[package]
+name = "brocciu"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+chess = "3.2.0"
+rand = "*"
+lichess-api = "0.3.0"
+serde = "*"
+serde_json= "*"
+reqwest = "*"
+tokio = { version = "*", features = ["full"] }
+tokio-stream = "0.1"
+num_cpus = "*"
+log="*"
+env_logger="*"
+project-root="*"
+
+[profile.release]
+debug = true
+
+

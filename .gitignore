@@ -1,0 +1,4 @@
+target/
+configs/*
+!configs/default*.json
+tasks.json
