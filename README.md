@@ -7,6 +7,12 @@
 # Brocciu
 **Brocciu** is a simple interface to access the [Lichess-Api](https://lichess.org/api) programmatically and lets a custom bot engine intercept incoming challenges and react to them in parallel. Furthermore, it comes with a simple chess engine written in [Rust](https://www.rust-lang.org) which implements the [Monte-Carlo-Tree-Search](https://en.wikipedia.org/wiki/Monte_Carlo_tree_search) algorithm using the straight-forward but slow ```Rc<RefCell<Node>>``` data structure. For more performant (and complex/unsafe) graph data structure solutions, the discussion on [Graphs and arena allocation](https://github.com/nrc/r4cppp/blob/master/graphs/README.md) is worth a read.
 
+The generated DAG can be visualized using the ```brocciu::utils::graph_visualization::draw_graph``` function. Due to its exponential nature, the following depicts a cropped version, where each black dot represents a unique chess board and each connection a chess move, starting from the "rnbqkb1r/pppp1ppp/5n2/4p3/2P5/5P2/PP1PP1PP/RNBQKBNR w KQkq - 1 3" board.
+
+<div style="display:flex; justify-content:center">
+    <img src="assets/cropped_search_tree.jpg" alt="Search Tree" style="max-width:100%; height:auto;">
+</div>
+
 ### Usage
 #### Api config setup
 In the json file ```/configs/default_api.json```, enter your lichess username and token. The token can be obtained by following the [bot instructions](https://lichess.org/api#tag/Bot/operation/botAccountUpgrade). Subsequently, rename the file to ```/configs/api.json```. 
@@ -70,7 +76,7 @@ State | Comment
 :x: | **Simulation Break Condition**: Currently constant depth break condition -> Break simulate step when position obviously leads to stalemate
 :x: | **Challenge Initiation**: Currently, bot can only react to exogeneous challenges -> Initiate challenges against the computer
 :x: | **Challenge Types**: Currently, only regular untimed challenge types supported. Non-standard (and timed) challenges result in undefined behavior -> Accept different challenge types;
-:x: | **Tree Data Structure**: Current node data structure is ```Rc<RefCell<Node>>``` -> Use more efficient node data structure
+:x: | **Tree Data Structure**: Current node data structure is ```Rc/Weak<RefCell<Node>>``` -> Use more efficient node data structure
 :x: | Other 
 
 ### Contributing

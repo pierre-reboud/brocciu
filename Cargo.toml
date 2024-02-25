@@ -18,6 +18,8 @@ num_cpus = "*"
 log="*"
 env_logger="*"
 project-root="*"
+plotters="*"
+image="*"
 
 [profile.release]
 debug = true

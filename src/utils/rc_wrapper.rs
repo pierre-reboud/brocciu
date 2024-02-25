@@ -1,12 +1,14 @@
 use std::cell::RefCell;
 use std::hash::{BuildHasher, Hash, Hasher};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use crate::mcts::tree::Node;
 use std::ops::Deref;
 
 pub struct HashableRcRefCell<T>(Rc<RefCell<T>>);
+pub struct WeakHashableRcRefCell<T>(Weak<RefCell<T>>);
 
 pub type NodeRef = HashableRcRefCell<Node>;
+pub type WNodeRef = WeakHashableRcRefCell<Node>;
 
 impl<T: Hash> HashableRcRefCell<T>{
     pub fn new(t: T) -> Self {
@@ -39,5 +41,36 @@ impl<T> Deref for HashableRcRefCell<T>{
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl<T> HashableRcRefCell<T>{
+    pub fn strong_count(&self) -> usize{
+        Rc::strong_count(&self.0)
+    }
+
+    pub fn downgrade(&self) -> WeakHashableRcRefCell<T>{
+        WeakHashableRcRefCell(Rc::downgrade(&self.0))
+    }
+}
+
+
+
+impl<T: Hash> WeakHashableRcRefCell<T>{
+    pub fn new(t: T) -> Self {
+        WeakHashableRcRefCell(Weak::new())
+    }
+}
+
+impl<T> WeakHashableRcRefCell<T>{
+    pub fn strong_count(&self) -> usize{
+        Weak::weak_count(&self.0)
+    }
+
+    pub fn upgrade(&self) -> Option<HashableRcRefCell<T>>{
+        match Weak::upgrade(&self.0){
+            Some(rc) => Some(HashableRcRefCell(rc)),
+            None => None
+        }
     }
 }

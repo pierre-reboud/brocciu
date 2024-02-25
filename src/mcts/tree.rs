@@ -2,7 +2,7 @@ use std::borrow::BorrowMut;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::cell::RefCell;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::thread::current;
 use lichess_api::api::board;
 use rand::thread_rng;
@@ -10,7 +10,7 @@ use tokio::select;
 use rand::prelude::SliceRandom;
 use std::time::{Instant};
 
-use crate::utils::rc_wrapper::{NodeRef, HashableRcRefCell};
+use crate::utils::rc_wrapper::{HashableRcRefCell, NodeRef, WNodeRef};
 use std::fmt;
 use log::debug;
 
@@ -23,9 +23,14 @@ pub struct Tree {
 
 impl Tree {
     pub fn new(initial_board: chess::Board, max_search_depth: usize) -> Tree{
-        let head = HashableRcRefCell::new(Node::new(None, initial_board)); 
+        // Create node with starting game position
+        let head = HashableRcRefCell::new(Node::new(None, initial_board));
+        // Create hashset of all tree nodes and insert the head
+        let mut nodes = HashSet::<NodeRef>::new();
+        nodes.insert(head.clone()); 
+        // Return the tree
         Tree {
-            nodes: HashSet::new(),
+            nodes,
             head,
             max_search_depth
         }
@@ -66,7 +71,9 @@ impl Tree {
         // Convert best child to chess move
         let chess_move = Node::_get_move_diff(self.head.clone(), best_child);
         // Remove all but the selected children (and their now unreachable children) from the tree
+        // crate::utils::graph_visualization::draw_graph(&self.nodes, &self.head, "Tree");
         self._prune_tree_based_on_move_and_update_head(chess_move);
+        // crate::utils::graph_visualization::draw_graph(&self.nodes, &self.head, "After");
         chess_move            
     }
 
@@ -78,12 +85,9 @@ impl Tree {
         // Chosen child node
         let best_child = HashableRcRefCell::new(Node::new(Some(self.head.clone()), target_board));
         // Drop all but the chosen child nodes
-        let borrowed_head = (*self.head).borrow();
-        borrowed_head.children
-            .iter()
-            .filter(|x| **x != best_child)
-            .for_each(|x| Self::drop_node(&mut self.nodes, &x));
-        drop(borrowed_head);
+        // self.head.borrow().children.iter()
+        //     .filter(|x| **x != best_child)
+        //     .for_each(|x| Self::drop_node(&mut self.nodes, &x));
         // Drop head from nodes
         self.nodes.remove(&self.head);
         // Update the tree's head
@@ -102,12 +106,11 @@ impl Tree {
             // debug!("Looping");
             let selected_node = self.select(starting_node.clone(),SelectionPolicy::UCT);
             // debug!("Selection done");
-            let expanded_node = self.expand(selected_node.clone());
-            drop(selected_node);
+            let expanded_node = self.expand(&selected_node);
             // debug!("Expansion done");
-            let result = self.simulate(expanded_node.clone(), SimulationPolicy::Random);
+            let result = self.simulate(&expanded_node, SimulationPolicy::Random);
             // debug!("Simulation done");
-            self.backpropagate(&expanded_node, result);
+            self.backpropagate(&expanded_node.downgrade(), result);
             // debug!("Backpropagation done");
             // Time limit
             n_iterations += 1;
@@ -144,13 +147,13 @@ impl Tree {
         leaf.clone()
     }
 
-    fn expand(&mut self, root: NodeRef) -> NodeRef{
+    fn expand(&mut self, root: &NodeRef) -> NodeRef{
         // Asserts root hasno children
         assert!(!(*root).borrow()._has_children());
         // If target depth not yet reached
         if (*root).borrow().depth < self.max_search_depth + (*self.head).borrow().depth{
             // Get root board
-            let current_board = (*root).borrow().board.clone();
+            let current_board = (*root).borrow().board;
             // Get root legal moves
             let move_generator = chess::MoveGen::new_legal(&current_board);
             let available_moves: Vec<chess::ChessMove> = move_generator.collect();
@@ -166,12 +169,13 @@ impl Tree {
             let mut rng = rand::thread_rng();
             (*root).borrow().children.choose(&mut rng).unwrap().clone()
         }
+        // Target depth reached or terminal board state reached (this should be the case)
         else{
-            root
+            root.clone()
         }
     }
 
-    fn simulate(&mut self, root: NodeRef, simulation_policy: SimulationPolicy, ) -> (chess::BoardStatus, chess::Color){
+    fn simulate(&mut self, root: &NodeRef, simulation_policy: SimulationPolicy, ) -> (chess::BoardStatus, chess::Color){
         if let SimulationPolicy::Random = simulation_policy {
             let mut board = (*root).borrow().board.clone();
             let mut rng = rand::thread_rng();
@@ -199,73 +203,40 @@ impl Tree {
         }
     }
 
-    fn backpropagate(&mut self, leaf: &NodeRef, status: (chess::BoardStatus, chess::Color)){
-        // If stop backpropagation if head node reached 
-        if self.head == *leaf {return;}
-        // debug!("N° parent {}", (*leaf).borrow().parents.len());
-        // (*leaf).borrow().parents.iter().for_each(|x| debug!("Leaf's parents {:?}", (*x).borrow().board.to_string()));
-        // debug!("Leaf depth {}, Head depth {}, Leaf board {}",leaf.borrow().depth, self.head.borrow().depth, leaf.borrow().board);
-        if let Err(err) = (*leaf).try_borrow_mut() {
-            debug!("error node \n depth {}, parents {}, children {}\n", (*leaf).borrow().depth, (*leaf).borrow().parents.len(), (*leaf).borrow().children.len() );
-            (*leaf).borrow().parents.iter().enumerate().for_each(
-                |(i,x)| debug!("Leaf's parent {i}: depth {}, parents {}, children {}, is in heads children {}\n\n", (*x).borrow().depth, (*x).borrow().parents.len(), (*x).borrow().children.len(), (*self.head).borrow().children.iter().any(|y| *x == *y))
-            );
-            debug!("head depth \n depth {}, parents {}, children {}", (*self.head).borrow().depth, (*self.head).borrow().parents.len(), (*self.head).borrow().children.len());    
-            return;
-        }
+    fn backpropagate(&mut self, leaf: &WNodeRef, status: (chess::BoardStatus, chess::Color)){
+        // Stop backpropagation is dead parent reached
+        if leaf.upgrade().is_none() {return;}
+        // Stop backpropagation if head node reached
+        if self.head == leaf.upgrade().unwrap()
+            // Stop backpropagation if node already borrowed
+            ||leaf.upgrade().unwrap().try_borrow_mut().is_err() {return;}
         {
-            let mut leaf_node = (**leaf).borrow_mut();
+            let leaf_ref = leaf.upgrade().unwrap();
+            let mut mut_leaf_node_ref = (*leaf_ref).borrow_mut();
             if let chess::BoardStatus::Checkmate = status.0 {
                 // White won
                 if let chess::Color::White = status.1 {
-                    leaf_node.white_wins += 1_f32;
+                    mut_leaf_node_ref.white_wins += 1_f32;
                 }
                 // Black won
                 else{
-                    leaf_node.white_wins += 0_f32;
+                    mut_leaf_node_ref.white_wins += 0_f32;
                 }
             }
             // Stalemate or too long to simulate, ignore status.1
             else{
-                leaf_node.white_wins += 0.5_f32;
+                mut_leaf_node_ref.white_wins += 0.5_f32;
             }
             // Update visit count
-            leaf_node.visits +=1_f32;
+            mut_leaf_node_ref.visits +=1_f32;
         }
-
-        // Backpropagate result to all parents
-        let leaf_ref = (*leaf).borrow();
-        leaf_ref.parents.iter()
-            .for_each(|x| {
-                assert!(*x != *leaf); // Parent ref should never point to leaf
-                self.backpropagate(x, status); // Backpropagate to each parent
-            });
-        drop(leaf_ref);
-        // Backpropagate result to all parents
-        // for parent in &leaf_node.parents{
-        //     assert!(*parent != leaf);
-        //     self.backpropagate(parent.clone(), status)
-        // }
-    }
-
-    fn drop_node(nodes: &mut HashSet<NodeRef>, root: &NodeRef){
-        unsafe {
-            let pointer = (**root).as_ptr(); 
-            (*pointer).children.iter()
-                .for_each(|x| {
-                    let childs_parents = &mut (**x).borrow_mut().parents;
-                    // Drop all child nodes that have root as sole parent
-                    if childs_parents.len() == 1 {Self::drop_node(nodes, x)}
-                    // Prune root from children having root and other parents
-                    else if childs_parents.len() > 1 {childs_parents.retain(|x| *x != *root);}
-                    else {panic!("Drop called on a head node. Should not happen")}
-            });
-            (*pointer).children.clear();
-            (*pointer).parents.clear();
+        {
+            let leaf_ref = leaf.upgrade().unwrap();
+            let parents = &leaf_ref.borrow().parents;
+            for parent in parents{
+                self.backpropagate(parent, status); // Backpropagate to each parent
+            }
         }
-        // Removes hashset reference
-        nodes.remove(&root);
-        // Memory should now be free as no more references point to the nodes
     }
 
     fn add_child(&mut self, parent: NodeRef, board: chess::Board) {
@@ -277,7 +248,7 @@ impl Tree {
             // Update target node with already existing reference
             node_ref = self.nodes.get(&node_ref).unwrap().clone();
             // Append to node's upstream connections 
-            (*node_ref).borrow_mut().add_parent_node(parent.clone());
+            (*node_ref).borrow_mut().add_parent_node(parent.clone().downgrade());
         }
         // Add parent's downstream connection
         // let assertions = (*parent).borrow().parents.iter().for_each(|x| (*x) != node_ref).any();
@@ -289,10 +260,10 @@ impl Tree {
 
 
 pub struct Node{
-    parents: Vec<NodeRef>,
-    children: Vec<NodeRef>,
+    parents: Vec<WNodeRef>,
+    pub children: Vec<NodeRef>,
     board: chess::Board,
-    depth: usize,
+    pub depth: usize,
     visits: f32,
     white_wins: f32,
 }
@@ -300,10 +271,10 @@ pub struct Node{
 impl Node{
     pub fn new(parent: Option<NodeRef>, board: chess::Board) -> Node{
         let depth: usize;
-        let mut parents: Vec<NodeRef> = Vec::new();
+        let mut parents: Vec<WNodeRef> = Vec::new();
         if let Some(parent) = parent {
             depth = (*parent).borrow_mut().depth + 1;
-            parents.push(parent);
+            parents.push(parent.downgrade() as WNodeRef);
         }
         else{
             depth = 0;
@@ -323,7 +294,7 @@ impl Node{
         self.children.push(child);
     }
 
-    fn add_parent_node(&mut self, parent: NodeRef){
+    fn add_parent_node(&mut self, parent: WNodeRef){
         self.parents.push(parent);
     }
 
@@ -332,7 +303,11 @@ impl Node{
     }
 
     fn _get_score(&self, selection_policy: SelectionPolicy) -> f32{
-        let parent_visits = self.parents.iter().map(|x| (**x).borrow().visits).sum();
+        let parent_visits = self.parents.iter()
+            // Remove dropped parents
+            .filter(|x| x.upgrade().is_some())
+            // Gather sum of all parent visits
+            .map(|x| (*x).upgrade().unwrap().borrow().visits).sum();
         // Score reverser flag: 1 if white to play, -1 if black to play
         let score_reverser_flag = (-2_f32 * (self.depth%2_usize) as f32) + 1_f32; 
         const C: f32 = 1.;
