@@ -14,24 +14,42 @@ use crate::utils::rc_wrapper::{HashableRcRefCell, NodeRef, WNodeRef};
 use log::debug;
 use std::fmt;
 
+struct TreeParams {
+    max_search_depth: usize,
+    n_cutoff_moves: usize,
+    max_search_time: f32,
+}
+
 pub struct Tree {
     nodes: HashSet<NodeRef>,
     head: NodeRef,
-    max_search_depth: usize,
+    params: TreeParams,
+    rng: rand::rngs::ThreadRng,
 }
 
 impl Tree {
     pub fn new(initial_board: chess::Board, max_search_depth: usize) -> Tree {
+        // Define parameters
+        const MAX_SEARCH_TIME: f32 = 5_f32;
+        const CUTOFF_MOVES: usize = 200;
+        // Instantiate tree's parameters
+        let params = TreeParams {
+            max_search_depth,
+            n_cutoff_moves: CUTOFF_MOVES,
+            max_search_time: MAX_SEARCH_TIME,
+        };
         // Create node with starting game position
         let head = HashableRcRefCell::new(Node::new(None, initial_board));
         // Create hashset of all tree nodes and insert the head
         let mut nodes = HashSet::<NodeRef>::new();
         nodes.insert(head.clone());
+
         // Return the tree
         Tree {
             nodes,
             head,
-            max_search_depth,
+            params,
+            rng: rand::thread_rng(),
         }
     }
 
@@ -103,7 +121,6 @@ impl Tree {
     }
 
     fn _populate_tree(&mut self) {
-        const MAX_SEARCH_TIME: f32 = 5_f32;
         debug!("Populate tree called");
         let now = Instant::now();
         let starting_node = self.head.clone();
@@ -120,7 +137,7 @@ impl Tree {
             // debug!("Backpropagation done");
             // Time limit
             n_iterations += 1;
-            if now.elapsed().as_secs_f32() > MAX_SEARCH_TIME {
+            if now.elapsed().as_secs_f32() > self.params.max_search_time {
                 break;
             }
             // Tree already fully explored limit
@@ -171,7 +188,7 @@ impl Tree {
         // Asserts root hasno children
         assert!(!(**root).borrow()._has_children());
         // If target depth not yet reached
-        if (**root).borrow().depth < self.max_search_depth + (*self.head).borrow().depth {
+        if (**root).borrow().depth < self.params.max_search_depth + (*self.head).borrow().depth {
             // Get root board
             let current_board = (**root).borrow().board;
             // Get root legal moves
@@ -187,8 +204,12 @@ impl Tree {
         }
         // If expansion created new children
         if (**root).borrow()._has_children() {
-            let mut rng = rand::thread_rng();
-            (**root).borrow().children.choose(&mut rng).unwrap().clone()
+            (**root)
+                .borrow()
+                .children
+                .choose(&mut self.rng)
+                .unwrap()
+                .clone()
         }
         // Target depth reached or terminal board state reached
         else {
@@ -204,14 +225,12 @@ impl Tree {
         if let SimulationPolicy::Random = simulation_policy {
             // Tree leaf's board
             let mut board = (**root).borrow().board.clone();
-            let mut rng = rand::thread_rng();
-            const CUTOFF_MOVES: usize = 200;
             let mut target_board = chess::Board::default();
-            for _ in 0..CUTOFF_MOVES {
+            for _ in 0..self.params.n_cutoff_moves {
                 let mut move_generator = chess::MoveGen::new_legal(&board);
                 let n_moves = move_generator.len();
                 if n_moves > 0 {
-                    let move_index = rng.gen_range(0, n_moves);
+                    let move_index = self.rng.gen_range(0, n_moves);
                     board.make_move(move_generator.nth(move_index).unwrap(), &mut target_board);
                     std::mem::swap(&mut board, &mut target_board);
                 } else {

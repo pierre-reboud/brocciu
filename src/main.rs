@@ -247,11 +247,10 @@ async fn bot_game_stream(lichess_api: Arc<ApiHandler>, id: String) -> () {
                         offer_draw,
                     );
                     let mut make_move_res: Result<bool, lichess_api::error::Error> =
-                        Err(lichess_api::error::Error::Unknown("".to_string()));
-                    while make_move_res.is_err() {
-                        make_move_res = lichess_api.lichess_api.bot_make_move(request).await;
-                    }
-                    //board_make_move(request).await;
+                        lichess_api.lichess_api.bot_make_move(request).await;
+                    // while make_move_res.is_err() {
+                    //     lichess_api.lichess_api.bot_make_move(request).await;
+                    // }
                 }
             }
             Ok(BotGameEvent::ChatLine { chat_line }) => {}
