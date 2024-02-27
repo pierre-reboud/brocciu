@@ -2,3 +2,4 @@ target/
 configs/*
 !configs/default*.json
 tasks.json
+perf.data*

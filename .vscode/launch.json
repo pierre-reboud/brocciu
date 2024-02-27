@@ -6,7 +6,7 @@
             "request": "launch",
             "name": "Debug",
             // "preLaunchTask": "build",
-            "program": "target/debug/${workspaceFolderBasename}",
+            "program": "target/release/${workspaceFolderBasename}",
             "args": [],
             "cwd": "${workspaceFolder}",
             "sourceLanguages": [

@@ -5,13 +5,18 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 # Brocciu
-**Brocciu** is a simple interface to access the [Lichess-Api](https://lichess.org/api) programmatically and lets a custom bot engine intercept incoming challenges and react to them in parallel. Furthermore, it comes with a simple chess engine written in [Rust](https://www.rust-lang.org) which implements the [Monte-Carlo-Tree-Search](https://en.wikipedia.org/wiki/Monte_Carlo_tree_search) algorithm using the straight-forward but slow ```Rc<RefCell<Node>>``` data structure. For more performant (and complex/unsafe) graph data structure solutions, the discussion on [Graphs and arena allocation](https://github.com/nrc/r4cppp/blob/master/graphs/README.md) is worth a read.
+**Brocciu** is a simple interface to access the [Lichess-Api](https://lichess.org/api) programmatically and lets a custom bot engine intercept incoming challenges and react to them in parallel. Furthermore, it comes with a simple chess engine written in [Rust](https://www.rust-lang.org) which implements the [Monte-Carlo-Tree-Search](https://en.wikipedia.org/wiki/Monte_Carlo_tree_search) algorithm using the straight-forward (but slow) ```Rc<RefCell<Node>>``` data structure. 
 
-The generated DAG can be visualized using the ```brocciu::utils::graph_visualization::draw_graph``` function. Due to its exponential nature, the following depicts a cropped version, where each black dot represents a unique chess board and each connection a chess move, starting from the "rnbqkb1r/pppp1ppp/5n2/4p3/2P5/5P2/PP1PP1PP/RNBQKBNR w KQkq - 1 3" board.
+*For more performant (and complex/unsafe) graph data structure solutions, the discussion on [Graphs and arena allocation](https://github.com/nrc/r4cppp/blob/master/graphs/README.md) is worth a read. Also, [this](https://github.com/zxqfl/mcts) crate implements a more efficient parallelized tree search.*
 
-<div style="display:flex; justify-content:center">
-    <img src="assets/cropped_search_tree.jpg" alt="Search Tree" style="max-width:100%; height:auto;">
+The generated DAG can be visualized using the ```brocciu::utils::graph_visualization::draw_graph``` function. Due to its exponential nature, the following depicts a cropped version without the connections, where each black dot represents a unique chess board annotated with its corresponding UCT value. Visual corruptions arise due to PNG's compression.
+
+<div style="display:flex; justify-content:center; overflow: hidden">
+    <img src="assets/Search_Tree_Cropped.png" alt="Search Tree" style="max-width:50%; height:auto;">
 </div>
+
+### Performance
+Runs approximately $10$k MCTS iterations/s on WSL2 with a i5-5200U CPU. Flamegraph indicates that simulation step takes $80%$ of the time
 
 ### Usage
 #### Api config setup
@@ -77,6 +82,7 @@ State | Comment
 :x: | **Challenge Initiation**: Currently, bot can only react to exogeneous challenges -> Initiate challenges against the computer
 :x: | **Challenge Types**: Currently, only regular untimed challenge types supported. Non-standard (and timed) challenges result in undefined behavior -> Accept different challenge types;
 :x: | **Tree Data Structure**: Current node data structure is ```Rc/Weak<RefCell<Node>>``` -> Use more efficient node data structure
+:x: | **Profiling/Performance**: Currently, the simulation step takes $80%$ of the compute budget, half of which is  
 :x: | Other 
 
 ### Contributing
