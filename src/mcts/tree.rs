@@ -63,10 +63,9 @@ impl Tree {
         self._populate_tree();
         // Select the best move based on the current estimate
         let chess_move = self._yield_best_move(color_to_play);
-        // debug!("Best move: {}", movee);
         // Plot graph in critical situation
         // crate::utils::graph_visualization::draw_graph(&self.nodes, &self.head, "Tree");
-        // panic!("Breakpoint");
+        std::process::exit(0);
         chess_move
     }
 
@@ -126,15 +125,10 @@ impl Tree {
         let starting_node = self.head.clone();
         let mut n_iterations: usize = 0;
         loop {
-            // debug!("Looping");
             let selected_node = self.select(starting_node.clone(), SelectionPolicy::UCT);
-            // debug!("Selection done");
             let expanded_node = self.expand(&selected_node);
-            // debug!("Expansion done");
             let result = self.simulate(&expanded_node, SimulationPolicy::Random);
-            // debug!("Simulation done");
             self.backpropagate(&expanded_node.downgrade(), result);
-            // debug!("Backpropagation done");
             // Time limit
             n_iterations += 1;
             if now.elapsed().as_secs_f32() > self.params.max_search_time {
@@ -192,9 +186,9 @@ impl Tree {
             // Get root board
             let current_board = (**root).borrow().board;
             // Get root legal moves
-            let mut move_generator = chess::MoveGen::new_legal(&current_board);
+            let move_generator = chess::MoveGen::new_legal(&current_board);
             // let available_moves: Vec<chess::ChessMove> = move_generator.collect();
-            let mut boards = move_generator.map(|x| {
+            let boards = move_generator.map(|x| {
                 let mut target_board = chess::Board::default();
                 current_board.make_move(x, &mut target_board);
                 target_board
@@ -276,71 +270,74 @@ impl Tree {
             // Update score
             mut_leaf_node_ref.score = mut_leaf_node_ref.get_score(SelectionPolicy::default());
             //Recursively backpropagate on parent nodes
-            drop(mut_leaf_node_ref);
-            let node_ref = leaf.upgrade().unwrap();
-            for parent in &(*node_ref).borrow().parents {
+            // drop(mut_leaf_node_ref);
+            // let node_ref = leaf.upgrade().unwrap();
+            for parent in &(*mut_leaf_node_ref).parents {
                 self.backpropagate(parent, status); // Backpropagate to each parent
             }
         }
     }
 
     fn add_children(&mut self, parent: &NodeRef, boards: impl Iterator<Item = chess::Board>) {
-        // Collect iterator into vector
-        let boards: Vec<chess::Board> = boards.collect();
-        // Create vector of child nodes
-        let mut child_nodes = Vec::<NodeRef>::with_capacity(boards.len());
-        for board in boards {
-            let cand_node = NodeRef::new(Node::new(Some(parent.clone()), board));
-            // If board is already tracked, update target node's parents
-            if let Some(existing_cand_node) = self.nodes.get(&cand_node) {
-                (**existing_cand_node)
-                    .borrow_mut()
-                    .add_parent_node(parent.clone().downgrade());
-            }
-            // Else, update hashset with the newly created node
-            else {
-                self.nodes.insert(cand_node.clone());
-            }
-            // Append to children vector
-            child_nodes.push(cand_node);
-        }
+        // Allocate a vector of all nodes for the given boards (size hint correct due to chess crate implentation)
+        let mut child_nodes = Vec::<NodeRef>::with_capacity(boards.size_hint().0);
+        child_nodes.extend(
+            boards
+                .map(|x| {
+                    // Create the candidate node
+                    let mut cand_node = NodeRef::new(Node::new(Some(parent.clone()), x));
+                    // Check if it is already tracked in the tree's hashset
+                    if let Some(existing_cand_node) = self.nodes.get(&cand_node) {
+                        // If so, append parent to target node's parent refs
+                        (**existing_cand_node)
+                            .borrow_mut()
+                            .add_parent_node(parent.clone().downgrade());
+                        cand_node = (*existing_cand_node).clone();
+                    } else {
+                        self.nodes.insert(cand_node.clone());
+                    }
+                    cand_node
+                })
+                .collect::<Vec<NodeRef>>(),
+        );
         // Assign children vector to parent
         (**parent).borrow_mut().children = child_nodes;
     }
 
     fn drop_node(nodes: &mut HashSet<NodeRef>, root: &NodeRef) {
-        //
+        // Removes hashset reference
+        nodes.remove(root);
         {
+            // Start recursive drop call on child nodes only reachable through root
             if let Ok(root_ref) = (*root).try_borrow() {
+                // Iterate over all child nodes
                 root_ref.children.iter().for_each(|x| {
-                    let childs_parents_len = (**x).borrow().parents.len();
-                    // Drop all child nodes that have root as sole parent
-                    if childs_parents_len == 1 {
-                        Self::drop_node(nodes, &x)
+                    // Check if child not already mut borrowed in other recursive drop line
+                    if let Ok(mut mut_child_ref) = (*x).try_borrow_mut() {
+                        // Clean parent refs of root and already dropped parents
+                        mut_child_ref.parents.retain(|y| {
+                            let result = if (*y).upgrade().is_some() {
+                                *(*y).upgrade().unwrap() != **root
+                            } else {
+                                false
+                            };
+                            result
+                        });
                     }
-                    // Prune root from children having root and other parents
-                    else if childs_parents_len > 1 {
-                        if let Ok(mut mut_child_ref) = (**x).try_borrow_mut() {
-                            mut_child_ref.parents.retain(|x| x.upgrade().is_some());
-                            mut_child_ref
-                                .parents
-                                .retain(|x| *x.upgrade().unwrap() != **root);
-                            if mut_child_ref.parents.is_empty() {
-                                Self::drop_node(nodes, &x)
-                            }
-                        }
+                    // Drop all child nodes that have no more parents
+                    if (**x).borrow().parents.len() == 0 {
+                        Self::drop_node(nodes, &x)
                     }
                 });
             }
         }
         {
-            if let Ok(mut mut_root_ref) = (**root).try_borrow_mut() {
-                mut_root_ref.children.clear();
-                mut_root_ref.parents.clear();
+            // Remove all child and parent refs originating from root
+            if let Ok(mut mut_root_ref) = (*root).try_borrow_mut() {
+                (*mut_root_ref).parents.clear();
+                (*mut_root_ref).children.clear();
             }
         }
-        // Removes hashset reference
-        nodes.remove(root);
         // Memory should now be free as no more references point to the nodes
     }
 }
@@ -373,12 +370,8 @@ impl Node {
             depth: depth,
             visits: 0,
             white_wins: 0.,
-            score: 0.,
+            score: f32::INFINITY,
         }
-    }
-
-    fn add_child_node(&mut self, child: NodeRef) {
-        self.children.push(child);
     }
 
     fn add_parent_node(&mut self, parent: WNodeRef) {
@@ -390,25 +383,29 @@ impl Node {
     }
 
     pub fn get_score(&self, selection_policy: SelectionPolicy) -> f32 {
+        // Gather sum of all parent visits
         let mut parent_visits: usize = self
             .parents
             .iter()
             // Remove dropped parents
             .filter(|x| x.upgrade().is_some())
-            // Gather sum of all parent visits
-            .map(|x| (*(*x).upgrade().unwrap()).borrow().visits)
+            .map(|x| unsafe {
+                // Unsafe bc node mutably borrowed in backpropagate, avoids
+                // dropping mutref to create ref instead
+                (*(*x).upgrade().unwrap().as_ptr()).visits
+            })
             .sum();
-        // Case where parent (n_parents > 1) is unexplored
+        // Case where one of multiple parents (n_parents > 1) is yet unexplored
         if parent_visits == 0 {
             parent_visits = 1;
         }
         // Pure win ratio score
         let win_score = self.get_win_ratio(None);
-        let C: f32 = f32::sqrt(2.0);
         if let SelectionPolicy::UCT = selection_policy {
+            let c: f32 = f32::sqrt(2.0);
             let score: f32;
             if self.visits > 0 {
-                score = win_score + C * ((parent_visits as f32).ln() / self.visits as f32).sqrt();
+                score = win_score + c * ((parent_visits as f32).ln() / self.visits as f32).sqrt();
             } else {
                 // Unvisited children should be explored with high priority
                 score = f32::INFINITY;
@@ -431,13 +428,6 @@ impl Node {
         } else {
             1_f32 - (self.white_wins / self.visits as f32)
         }
-    }
-
-    fn _is_fully_expanded(&self) -> bool {
-        let move_generator = chess::MoveGen::new_legal(&self.board);
-        let legal_moves: Vec<chess::ChessMove> = move_generator.collect();
-        // TODO Check if children are 1. legal and 2. unique
-        legal_moves.len() == self.children.len()
     }
 
     fn _is_not_terminal(&self) -> bool {

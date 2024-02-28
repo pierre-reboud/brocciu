@@ -3,12 +3,6 @@ use log::debug;
 use std::collections::{HashMap, HashSet};
 
 pub fn draw_graph(tree_nodes: &HashSet<NodeRef>, head: &NodeRef, title: &str) {
-    // let subset_len = 10000; // Number of nodes to be plotted
-    // let mut nodes: HashSet<NodeRef> = HashSet::with_capacity(subset_len);
-
-    // for value in tree_nodes.iter().take(subset_len){
-    //     let _ = nodes.insert((*value).clone());
-    // }
     let nodes = tree_nodes;
     debug!("Plotting graph");
     let NODE_SIZE: f32 = 2_f32;
@@ -66,7 +60,7 @@ pub fn draw_graph(tree_nodes: &HashSet<NodeRef>, head: &NodeRef, title: &str) {
 
     debug!("Image heigth, image width: {},{}", fHEIGHT, fWIDTH);
 
-    let title = String::from(format!("../{}.png", title));
+    let title = String::from(format!("{}.png", title));
     let root = BitMapBackend::new(&title, (WIDTH, HEIGHT)).into_drawing_area();
     root.fill(&WHITE).unwrap();
 
@@ -104,23 +98,23 @@ pub fn draw_graph(tree_nodes: &HashSet<NodeRef>, head: &NodeRef, title: &str) {
         ))
         .unwrap();
 
-    // // Compute edges (child edges and parent edges are the same)
-    // let mut child_edges: Vec<Vec<(f32, f32)>> = Vec::new();
-    // // Gather child edges
-    // for (node, x, y, is_head) in &processed_nodes {
-    //     for nb in node.borrow().children.iter() {
-    //         if let Some((nbx, nby)) = plotted_nodes.get(nb) {
-    //             let edge = vec![(*x, *y), (*nbx, *nby)];
-    //             child_edges.push(edge);
-    //         } else {
-    //             debug!("Connection node to {},{} does not exist", *x, *y);
-    //         }
-    //     }
-    // }
-    // //Draw edges
-    // child_edges.iter().for_each(|x| {
-    //     let _ = chart.draw_series(LineSeries::new((*x).clone(), &RED));
-    // });
+    // Compute edges (child edges and parent edges are the same)
+    let mut child_edges: Vec<Vec<(f32, f32)>> = Vec::new();
+    // Gather child edges
+    for (node, x, y, is_head) in &processed_nodes {
+        for nb in node.borrow().children.iter() {
+            if let Some((nbx, nby)) = plotted_nodes.get(nb) {
+                let edge = vec![(*x, *y), (*nbx, *nby)];
+                child_edges.push(edge);
+            } else {
+                debug!("Connection node to {},{} does not exist", *x, *y);
+            }
+        }
+    }
+    //Draw edges
+    child_edges.iter().for_each(|x| {
+        let _ = chart.draw_series(LineSeries::new((*x).clone(), &RED));
+    });
 
     root.present().unwrap();
 }

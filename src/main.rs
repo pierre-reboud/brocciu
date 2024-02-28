@@ -100,10 +100,10 @@ async fn streaming_loop(api_handle: Arc<ApiHandler>) -> () {
             Ok(Event::Challenge {
                 challenge: ref json,
             }) => {
-                let mut accept_request = lichess_api::model::challenges::accept::PostRequest::new(
+                let accept_request = lichess_api::model::challenges::accept::PostRequest::new(
                     json.base.id.to_string(),
                 );
-                let accept_challenge_res = event_api_handle
+                let _accept_challenge_res = event_api_handle
                     .lichess_api
                     .accept_challenge(accept_request)
                     .await;
@@ -111,14 +111,14 @@ async fn streaming_loop(api_handle: Arc<ApiHandler>) -> () {
             }
             Ok(
                 Event::ChallengeDeclined {
-                    challenge: ref json,
+                    challenge: ref _json,
                 }
                 | Event::ChallengeCanceled {
-                    challenge: ref json,
+                    challenge: ref _json,
                 },
             ) => {}
             Ok(Event::GameStart { game }) => {
-                let mut game_handle = Arc::new(Mutex::new(BotGame::new_from_challenge(&game)));
+                let game_handle = Arc::new(Mutex::new(BotGame::new_from_challenge(&game)));
                 let mut games_handle_guard = event_api_handle.game_handles.lock().unwrap();
                 games_handle_guard.insert(game.game_id.clone(), game_handle);
                 drop(games_handle_guard);
@@ -156,7 +156,7 @@ async fn bot_game_stream(lichess_api: Arc<ApiHandler>, id: String) -> () {
         .await
         .unwrap();
     let mut game_id = String::from("");
-    let mut last_sent_line = String::from("");
+    let last_sent_line = String::from("");
     while let Some(event) = events_stream.next().await {
         debug!("Received game loop event: {:?}", event);
         match event {
