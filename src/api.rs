@@ -14,6 +14,7 @@ pub struct ApiHandler {
     pub queues: Mutex<Queues>,
     pub game_handles: Mutex<HashMap<String, Arc<Mutex<crate::game::BotGame>>>>,
     pub pool: utils::threadpool::ThreadPool,
+    pub user: String,
 }
 
 pub struct Queues {
@@ -33,12 +34,10 @@ impl Queues {
 impl ApiHandler {
     pub fn new() -> Result<ApiHandler, Box<dyn std::error::Error>> {
         // Load API Information from JSON file
-        let api_info = utils::parse_args::get_api_tokens();
-        // Extract token string
-        let token = api_info.map(|x| x.token).ok();
+        let api_info = utils::parse_args::get_api_tokens().unwrap();
         // // Build API client
         let client: Client = reqwest::ClientBuilder::new().build().unwrap();
-        let lichess_api = lichess_api::client::LichessApi::new(client, token);
+        let lichess_api = lichess_api::client::LichessApi::new(client, Some(api_info.token));
         let queues = Queues::new();
         // let thread_handles = HashMap::<String, Mutex<tJoinHandle<()>>>::new();
         let game_handles = Mutex::new(HashMap::<String, Arc<Mutex<crate::game::BotGame>>>::new());
@@ -48,6 +47,7 @@ impl ApiHandler {
             queues,
             game_handles,
             pool,
+            user: api_info.user,
         };
         Ok(api)
     }
@@ -65,11 +65,6 @@ impl ApiHandler {
         event_stream
     }
 
-    // pub async fn handle_event(&self, event: Event) -> Result<(), Box<dyn std::error::Error>>{
-    //     // if lichess_api.processing_queue.push(event);
-    //     let mut queues = self.queues.lock().unwrap();
-    //     Ok(())
-    // }
 }
 
 unsafe impl Send for ApiHandler {}

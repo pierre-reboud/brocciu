@@ -9,8 +9,8 @@ edition = "2021"
 chess = "3.2.0"
 rand = "*"
 lichess-api = "0.3.0"
-serde = "*"
-serde_json= "*"
+serde = {version="*", features=["derive"]}
+serde_json= {version="*", default_features=false, features = ["alloc", "raw_value"]}
 reqwest = "*"
 tokio = { version = "*", features = ["full"] }
 tokio-stream = "0.1"
@@ -22,7 +22,7 @@ plotters="*"
 image="*"
 
 [profile.release]
-debug = true
+#debug = true
 
 
 

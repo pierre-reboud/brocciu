@@ -1,11 +1,9 @@
-FROM rust:1.76
-
-EXPOSE 80 80
-EXPOSE 443 443
+FROM rust:latest
 
 WORKDIR /myapp
 COPY . .
 
-RUN cargo install --path .
+# RUN cargo install --path .
+RUN cargo build --release
 
-CMD ["cargo run --release"]
+CMD cargo run --release

@@ -65,7 +65,7 @@ impl Tree {
         let chess_move = self._yield_best_move(color_to_play);
         // Plot graph in critical situation
         // crate::utils::graph_visualization::draw_graph(&self.nodes, &self.head, "Tree");
-        std::process::exit(0);
+        // std::process::exit(0);
         chess_move
     }
 

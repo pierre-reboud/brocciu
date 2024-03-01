@@ -19,8 +19,10 @@ use tokio_stream::StreamExt;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    
     // Debug
     std::env::set_var("RUST_BACKTRACE", "1");
+    
     // std::env::set_var("RUST_BACKTRACE", "full");
     Builder::new().filter(None, LevelFilter::Debug).init();
 
@@ -34,64 +36,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn streaming_loop(api_handle: Arc<ApiHandler>) -> () {
-    //Result<(), Box<dyn std::error::Error>>{
     // Request("error sending request for url (https://lichess.org/api/stream/event): error trying to connect: Connection reset by peer (os error 104)")
     let mut event_stream = api_handle.get_event_stream().await;
     while event_stream.is_err() {
         event_stream = api_handle.get_event_stream().await
     }
     let mut event_stream = event_stream.unwrap();
-    // let rt = Arc::new(tokio::runtime::Runtime::new().unwrap());
     debug!("Printing incoming events ... \n");
-    // let rt = tokio::runtime::Builder::new_current_thread()
-    //     .enable_all()
-    //     .build()
-    //     .unwrap();
-    // std::thread::spawn( move || {
-    //     let local_set = tokio::task::LocalSet::new();
-    //     local_set.spawn_local( async move {
-    //         while let Some(item) = event_stream.next().await{
-    //             let event_api_handle = api_handle.clone();
-    //             // let rt_handle = rt.clone();
-    //             debug!("Received streaming loop event: {:?}", item);
-    //             match item {
-    //                 Ok(Event::Challenge {challenge: ref json}) => {
-    //                     let mut accept_request = lichess_api::model::challenges::accept::PostRequest::new(json.base.id.to_string());
-    //                     let accept_challenge_res = event_api_handle.lichess_api.accept_challenge(accept_request).await;
-    //                     debug!("Challenge accepted");
-    //                 }
-    //                 Ok(Event::ChallengeDeclined {challenge: ref json}
-    //                 | Event::ChallengeCanceled {challenge: ref json}) => {}
-    //                 Ok(Event::GameStart {game}) => {
-    //                     let mut game_handle = Arc::new(Mutex::new(BotGame::new_from_challenge(&game)));
-    //                     let mut games_handle_guard = event_api_handle.game_handles.lock().unwrap();
-    //                     games_handle_guard.insert(game.game_id.clone(), game_handle);
-    //                     drop(games_handle_guard);
-    //                     // event_api_handle.game_handles.lock().unwrap().insert(game.game_id, game_handle);
-    //                     // let _ = bot_game_stream(event_api_handle.clone(), game.game_id);
-    //                     tokio::task::spawn_local(
-    //                             bot_game_stream(event_api_handle.clone(), game.game_id.clone())
-    //                         );
-
-    //                     // event_api_handle.thread_handles.insert(info.game_id, thread_handle);
-    //                 }
-    //                 Ok(Event::GameFinish {game: info}) => {
-    //                     _ = event_api_handle.game_handles.lock().unwrap().remove(&info.game_id).unwrap();
-    //                     // _ = tokio::join!(event_api_handle.thread_handles.remove(&info.game_id).unwrap())
-    //                     // _ = tokio::join!(event_api_handle.thread_handles.remove(&info.game_id).unwrap().lock().unwrap());
-    //                 }
-    //                 Err(item) => {
-    //                     panic!("Panic within stream handling: {:?}", item);
-    //                 }
-    //             }
-    //         };
-    //     });
-    //     local_set.await;
-    //     // rt.block_on(local_set);
-    // });
-    // }
-    // let local_set = tokio::task::LocalSet::new();
-    // local_set.
     while let Some(item) = event_stream.next().await {
         let event_api_handle = api_handle.clone();
         // let rt_handle = rt.clone();
@@ -123,13 +74,7 @@ async fn streaming_loop(api_handle: Arc<ApiHandler>) -> () {
                 games_handle_guard.insert(game.game_id.clone(), game_handle);
                 drop(games_handle_guard);
                 // event_api_handle.game_handles.lock().unwrap().insert(game.game_id, game_handle);
-                // let _ = bot_game_stream(event_api_handle.clone(), game.game_id);
-                let local_set = tokio::task::LocalSet::new();
-                local_set.run_until(async move {
-                        bot_game_stream(event_api_handle.clone(), game.game_id.clone())
-                    }.await).await;
-
-                // event_api_handle.thread_handles.insert(info.game_id, thread_handle);
+                bot_game_stream(event_api_handle.clone(), game.game_id).await;
             }
             Ok(Event::GameFinish { game: info }) => {
                 _ = event_api_handle
@@ -138,8 +83,6 @@ async fn streaming_loop(api_handle: Arc<ApiHandler>) -> () {
                     .unwrap()
                     .remove(&info.game_id)
                     .unwrap();
-                // _ = tokio::join!(event_api_handle.thread_handles.remove(&info.game_id).unwrap())
-                // _ = tokio::join!(event_api_handle.thread_handles.remove(&info.game_id).unwrap().lock().unwrap());
             }
             Err(item) => {
                 panic!("Panic within stream handling: {:?}", item);
@@ -156,7 +99,6 @@ async fn bot_game_stream(lichess_api: Arc<ApiHandler>, id: String) -> () {
         .await
         .unwrap();
     let mut game_id = String::from("");
-    let last_sent_line = String::from("");
     while let Some(event) = events_stream.next().await {
         debug!("Received game loop event: {:?}", event);
         match event {
@@ -248,21 +190,16 @@ async fn bot_game_stream(lichess_api: Arc<ApiHandler>, id: String) -> () {
                     );
                     let mut make_move_res: Result<bool, lichess_api::error::Error> =
                         lichess_api.lichess_api.bot_make_move(request).await;
-                    // while make_move_res.is_err() {
-                    //     lichess_api.lichess_api.bot_make_move(request).await;
-                    // }
                 }
             }
-            Ok(BotGameEvent::ChatLine { chat_line }) => {}
-            //     if chat_line.text.clone() != last_sent_line {
-            //         // "Io ùn sò ancu capace di parlà. Per piacè, scusate stu disagiamentu."
-            //         let new_line = get_lorem_ipsum();
-            //         let chat_request = ChatPostRequest::new(&game_id, chat_line.room.clone(), &new_line);
-            //         let chat_res = lichess_api.lichess_api.bot_write_in_chat(chat_request).await;
-            //         last_sent_line = new_line;
-            //         debug!("Chat Post request {:?}; last line {}", chat_res, last_sent_line);
-            //     }
-            // }
+            Ok(BotGameEvent::ChatLine { chat_line }) => {
+                if lichess_api.user != chat_line.username {
+                    let new_line = get_lorem_ipsum();
+                    let chat_request = ChatPostRequest::new(&game_id, chat_line.room.clone(), &new_line);
+                    let chat_res = lichess_api.lichess_api.bot_write_in_chat(chat_request).await;
+                    debug!("Chat Post request {:?}", chat_res);
+                }
+            }
             Ok(BotGameEvent::OpponentGone { .. }) => {
                 break;
             }
